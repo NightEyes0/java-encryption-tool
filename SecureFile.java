@@ -1,19 +1,24 @@
 public class SecureFile {
     public static void main(String[] args) {
         
-        // 1. Check if the user typed at least 2 words after the program name
         if (args.length < 2) {
-            System.out.println("Error: You need to give me a command and a filename.");
-            System.out.println("Example: java SecureFile encrypt secret.txt");
-            return; // This instantly stops the program
+            System.out.println("Usage: java SecureFile <encrypt/decrypt> <filename>");
+            return;
         }
 
-        // 2. If they did type 2 words, grab them from the args array
-        String mode = args[0];
+        // We use toLowerCase() so it works even if the user types "ENCRYPT"
+        String mode = args[0].toLowerCase();
         String fileName = args[1];
 
-        // 3. Print them back out to prove Java captured them
-        System.out.println("Mode captured: " + mode);
-        System.out.println("File captured: " + fileName);
+        //  Route the program based on the mode
+        if (mode.equals("encrypt")) {
+            System.out.println("[+] Ready to ENCRYPT the file: " + fileName);
+            
+        } else if (mode.equals("decrypt")) {
+            System.out.println("[-] Ready to DECRYPT the file: " + fileName);
+            
+        } else {
+            System.out.println("Error: Unknown command '" + mode + "'. Use 'encrypt' or 'decrypt'.");
+        }
     }
 }
