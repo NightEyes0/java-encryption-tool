@@ -1,9 +1,16 @@
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.io.IOException;
+//CRYPTOGRAPHY IMPORTS
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.Key;
 
 public class SecureFile {
+    
+    // AES requires a 16-byte (128-bit) key.
+    private static final String SECRET_KEY = "MySuperSecretKey"; 
+
     public static void main(String[] args) {
         
         if (args.length < 2) {
@@ -20,34 +27,43 @@ public class SecureFile {
             return; 
         }
 
-        //  Try-Catch Block for File I/O
         try {
-            //  Read the file as raw bytes
             byte[] fileData = Files.readAllBytes(Paths.get(fileName));
-            System.out.println("[*] Successfully read " + fileData.length + " bytes from " + fileName);
+            
+            //  Convert our 16-character string into a raw AES cryptographic key
+            Key aesKey = new SecretKeySpec(SECRET_KEY.getBytes(), "AES");
+            
+            // Initialize the AES Cipher (The engine scrambling)
+            Cipher cipher = Cipher.getInstance("AES");
 
             if (mode.equals("encrypt")) {
-                //  Create the new encrypted file name
-                String outFileName = fileName + ".enc";
+                //Turn the engine on in ENCRYPT mode
+                cipher.init(Cipher.ENCRYPT_MODE, aesKey);
                 
-                //  Write the bytes to the new file (No encryption yet, just copying)
-                Files.write(Paths.get(outFileName), fileData);
-                System.out.println("[+] SUCCESS: File saved as " + outFileName);
+                // Scramble the bytes
+                byte[] encryptedData = cipher.doFinal(fileData);
+                
+                String outFileName = fileName + ".enc";
+                Files.write(Paths.get(outFileName), encryptedData);
+                System.out.println("[+] SUCCESS: File encrypted and saved as " + outFileName);
                 
             } else if (mode.equals("decrypt")) {
-                //  Strip the .enc off the name for the decrypted file
-                String outFileName = fileName.replace(".enc", ".dec");
+                //  Turn the engine on in DECRYPT mode
+                cipher.init(Cipher.DECRYPT_MODE, aesKey);
                 
-                //  Write the bytes back to disk
-                Files.write(Paths.get(outFileName), fileData);
-                System.out.println("[-] SUCCESS: File saved as " + outFileName);
+                //  Un-scramble the bytes!
+                byte[] decryptedData = cipher.doFinal(fileData);
+                
+                String outFileName = fileName.replace(".enc", ".dec");
+                Files.write(Paths.get(outFileName), decryptedData);
+                System.out.println("[-] SUCCESS: File decrypted and saved as " + outFileName);
                 
             } else {
                 System.out.println("Error: Unknown command '" + mode + "'. Use 'encrypt' or 'decrypt'.");
             }
 
-        } catch (IOException e) {
-            // If anything goes wrong reading/writing, Java jumps down here instead of crashing
+        } catch (Exception e) {
+            //  catches both File AND Cryptography errors
             System.out.println("Fatal Error: Could not process file - " + e.getMessage());
         }
     }
