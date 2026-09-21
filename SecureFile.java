@@ -1,18 +1,17 @@
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-//CRYPTOGRAPHY IMPORTS
+import java.io.Console;
+import java.util.Scanner;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.Key;
+import javax.crypto.spec.IvParameterSpec;
 
 public class SecureFile {
     
-    // AES requires a 16-byte (128-bit) key.
-    private static final String SECRET_KEY = "MySuperSecretKey"; 
-
     public static void main(String[] args) {
-        
         if (args.length < 2) {
             System.out.println("Usage: java SecureFile <encrypt/decrypt> <filename>");
             return;
@@ -27,44 +26,76 @@ public class SecureFile {
             return; 
         }
 
+        // SECURE PASSWORD (Hides keystrokes in the terminal)
+        Console console = System.console();
+        String password;
+        if (console != null) {
+            password = new String(console.readPassword("[?] Enter secure password (keystrokes hidden): "));
+        } else {
+            //  just in case the terminal doesn't support hidden text
+            Scanner scanner = new Scanner(System.in);
+            System.out.print("[?] Enter secure password: ");
+            password = scanner.nextLine();
+        }
+
         try {
             byte[] fileData = Files.readAllBytes(Paths.get(fileName));
             
-            //  Convert our 16-character string into a raw AES cryptographic key
-            Key aesKey = new SecretKeySpec(SECRET_KEY.getBytes(), "AES");
-            
-            // Initialize the AES Cipher (The engine scrambling)
-            Cipher cipher = Cipher.getInstance("AES");
+            //  SHA-256 KEY DERIVATION (Turns password into a 256-bit AES Key)
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashedKey = digest.digest(password.getBytes("UTF-8"));
+            SecretKeySpec secretKey = new SecretKeySpec(hashedKey, "AES");
+
+            // UPGRADED CIPHER (AES CBC Mode with PKCS5 Padding)
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
 
             if (mode.equals("encrypt")) {
-                //Turn the engine on in ENCRYPT mode
-                cipher.init(Cipher.ENCRYPT_MODE, aesKey);
                 
-                // Scramble the bytes
+                //Generate a random Initialization Vector (IV)
+                byte[] iv = new byte[16];
+                new SecureRandom().nextBytes(iv);
+                IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+                // Encrypt
+                cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec);
                 byte[] encryptedData = cipher.doFinal(fileData);
                 
+                // Combine the IV and the Encrypted Data into one file so we can decrypt it later
+                byte[] combined = new byte[iv.length + encryptedData.length];
+                System.arraycopy(iv, 0, combined, 0, iv.length);
+                System.arraycopy(encryptedData, 0, combined, iv.length, encryptedData.length);
+                
                 String outFileName = fileName + ".enc";
-                Files.write(Paths.get(outFileName), encryptedData);
-                System.out.println("[+] SUCCESS: File encrypted and saved as " + outFileName);
+                Files.write(Paths.get(outFileName), combined);
+                System.out.println("[+] SUCCESS: " + fileName + " secured with AES-256/CBC.");
                 
             } else if (mode.equals("decrypt")) {
-                //  Turn the engine on in DECRYPT mode
-                cipher.init(Cipher.DECRYPT_MODE, aesKey);
                 
-                //  Un-scramble the bytes!
-                byte[] decryptedData = cipher.doFinal(fileData);
+                // Extract the IV from the first 16 bytes of the file
+                byte[] iv = new byte[16];
+                System.arraycopy(fileData, 0, iv, 0, 16);
+                IvParameterSpec ivSpec = new IvParameterSpec(iv);
+                
+                // Extract the actual encrypted data (everything after the first 16 bytes)
+                byte[] actualEncryptedData = new byte[fileData.length - 16];
+                System.arraycopy(fileData, 16, actualEncryptedData, 0, actualEncryptedData.length);
+                
+                // Decrypt
+                cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec);
+                byte[] decryptedData = cipher.doFinal(actualEncryptedData);
                 
                 String outFileName = fileName.replace(".enc", ".dec");
                 Files.write(Paths.get(outFileName), decryptedData);
-                System.out.println("[-] SUCCESS: File decrypted and saved as " + outFileName);
+                System.out.println("[-] SUCCESS: " + fileName + " decrypted successfully.");
                 
             } else {
-                System.out.println("Error: Unknown command '" + mode + "'. Use 'encrypt' or 'decrypt'.");
+                System.out.println("Error: Unknown command.");
             }
 
+        } catch (javax.crypto.BadPaddingException e) {
+            System.out.println("\n[!] CRITICAL ERROR: Incorrect password or corrupted file!");
         } catch (Exception e) {
-            //  catches both File AND Cryptography errors
-            System.out.println("Fatal Error: Could not process file - " + e.getMessage());
+            System.out.println("\n[!] Fatal Error: Could not process file - " + e.getMessage());
         }
     }
 }
