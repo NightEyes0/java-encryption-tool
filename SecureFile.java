@@ -1,3 +1,5 @@
+import java.io.File; // NEW: Tells Java we want to work with files
+
 public class SecureFile {
     public static void main(String[] args) {
         
@@ -6,16 +8,22 @@ public class SecureFile {
             return;
         }
 
-        // We use toLowerCase() so it works even if the user types "ENCRYPT"
         String mode = args[0].toLowerCase();
         String fileName = args[1];
 
-        //  Route the program based on the mode
+        // Check if the file actually exists before doing anything
+        File targetFile = new File(fileName);
+        
+        if (!targetFile.exists()) {
+            System.out.println("Error: Cannot find the file '" + fileName + "'");
+            return; // Stop the program right here
+        }
+
         if (mode.equals("encrypt")) {
-            System.out.println("[+] Ready to ENCRYPT the file: " + fileName);
+            System.out.println("[+] File found! Ready to ENCRYPT: " + fileName);
             
         } else if (mode.equals("decrypt")) {
-            System.out.println("[-] Ready to DECRYPT the file: " + fileName);
+            System.out.println("[-] File found! Ready to DECRYPT: " + fileName);
             
         } else {
             System.out.println("Error: Unknown command '" + mode + "'. Use 'encrypt' or 'decrypt'.");
