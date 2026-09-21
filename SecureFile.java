@@ -26,14 +26,13 @@ public class SecureFile {
             return; 
         }
 
-        // SECURE PASSWORD (Hides keystrokes in the terminal)
         Console console = System.console();
         String password;
+        Scanner scanner = new Scanner(System.in); //  both fallback and our new prompt
+        
         if (console != null) {
             password = new String(console.readPassword("[?] Enter secure password (keystrokes hidden): "));
         } else {
-            //  just in case the terminal doesn't support hidden text
-            Scanner scanner = new Scanner(System.in);
             System.out.print("[?] Enter secure password: ");
             password = scanner.nextLine();
         }
@@ -41,26 +40,21 @@ public class SecureFile {
         try {
             byte[] fileData = Files.readAllBytes(Paths.get(fileName));
             
-            //  SHA-256 KEY DERIVATION (Turns password into a 256-bit AES Key)
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashedKey = digest.digest(password.getBytes("UTF-8"));
             SecretKeySpec secretKey = new SecretKeySpec(hashedKey, "AES");
 
-            // UPGRADED CIPHER (AES CBC Mode with PKCS5 Padding)
             Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
 
             if (mode.equals("encrypt")) {
                 
-                //Generate a random Initialization Vector (IV)
                 byte[] iv = new byte[16];
                 new SecureRandom().nextBytes(iv);
                 IvParameterSpec ivSpec = new IvParameterSpec(iv);
 
-                // Encrypt
                 cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec);
                 byte[] encryptedData = cipher.doFinal(fileData);
                 
-                // Combine the IV and the Encrypted Data into one file so we can decrypt it later
                 byte[] combined = new byte[iv.length + encryptedData.length];
                 System.arraycopy(iv, 0, combined, 0, iv.length);
                 System.arraycopy(encryptedData, 0, combined, iv.length, encryptedData.length);
@@ -69,18 +63,29 @@ public class SecureFile {
                 Files.write(Paths.get(outFileName), combined);
                 System.out.println("[+] SUCCESS: " + fileName + " secured with AES-256/CBC.");
                 
+                //  INTERACTIVE CLEANUP
+                System.out.print("[?] Do you want to permanently delete the original unprotected file? (y/n): ");
+                String deleteChoice = scanner.nextLine().trim().toLowerCase();
+                
+                if (deleteChoice.equals("y") || deleteChoice.equals("yes")) {
+                    if (targetFile.delete()) {
+                        System.out.println("[+] Original file wiped from disk.");
+                    } else {
+                        System.out.println("[!] Warning: Could not delete the original file (might be locked by another program).");
+                    }
+                } else {
+                    System.out.println("[-] Original file preserved.");
+                }
+                
             } else if (mode.equals("decrypt")) {
                 
-                // Extract the IV from the first 16 bytes of the file
                 byte[] iv = new byte[16];
                 System.arraycopy(fileData, 0, iv, 0, 16);
                 IvParameterSpec ivSpec = new IvParameterSpec(iv);
                 
-                // Extract the actual encrypted data (everything after the first 16 bytes)
                 byte[] actualEncryptedData = new byte[fileData.length - 16];
                 System.arraycopy(fileData, 16, actualEncryptedData, 0, actualEncryptedData.length);
                 
-                // Decrypt
                 cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec);
                 byte[] decryptedData = cipher.doFinal(actualEncryptedData);
                 
