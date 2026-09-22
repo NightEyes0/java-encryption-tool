@@ -1,4 +1,4 @@
-# Java AES-256 File Encryption Engine 🔐
+# Java AES-256 File Encryption Engine 
 
 A command-line file encryption utility built in Java. This application uses the Advanced Encryption Standard (AES-256 in CBC mode) to securely encrypt and decrypt files of any size using byte-level stream processing.
 
