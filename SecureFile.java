@@ -42,6 +42,11 @@ public class SecureFile {
             password = scanner.nextLine();
         }
 
+       
+        // START THE PERFORMANCE TIMER
+        
+        long startTime = System.currentTimeMillis();
+
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashedKey = digest.digest(password.getBytes("UTF-8"));
@@ -103,27 +108,20 @@ public class SecureFile {
                 
                 String outFileName = fileName.replace(".enc", ".dec");
                 
-                
-                //STREAMING DECRYPTION (CHUNK BY CHUNK)
-                
                 try (FileInputStream fis = new FileInputStream(targetFile)) {
                     
-                    // Read the first 16 bytes to extract the IV
                     byte[] iv = new byte[16];
                     fis.read(iv); 
                     IvParameterSpec ivSpec = new IvParameterSpec(iv);
                     
-                    //  engine on in DECRYPT mode
                     cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec);
                     
-                    // Stream  remaining bytes through the CipherInputStream
                     try (CipherInputStream cis = new CipherInputStream(fis, cipher);
                          FileOutputStream fos = new FileOutputStream(outFileName)) {
                         
-                        byte[] buffer = new byte[64 * 1024]; // 64KB Bucket
+                        byte[] buffer = new byte[64 * 1024]; 
                         int bytesRead;
                         
-                        //   Read decrypted bytes, write them to disk, repeat
                         while ((bytesRead = cis.read(buffer)) != -1) {
                             fos.write(buffer, 0, bytesRead);
                         }
@@ -134,7 +132,14 @@ public class SecureFile {
                 
             } else {
                 System.out.println("Error: Unknown command.");
+                return;
             }
+
+            
+            //STOP THE TIMER AND PRINT ELAPSED TIME
+           
+            long endTime = System.currentTimeMillis();
+            System.out.println("[i] Operation completed in " + (endTime - startTime) + " milliseconds.");
 
         } catch (javax.crypto.BadPaddingException e) {
             System.out.println("\n[!] CRITICAL ERROR: Incorrect password or corrupted file!");
