@@ -9,7 +9,6 @@ import java.security.SecureRandom;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import javax.crypto.spec.IvParameterSpec;
-// NEW IMPORTS FOR CHUNKING
 import java.io.FileInputStream;  
 import java.io.FileOutputStream; 
 import javax.crypto.CipherOutputStream; 
@@ -59,19 +58,15 @@ public class SecureFile {
                 cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec);
                 String outFileName = fileName + ".enc";
                 
-                // ==========================================
-                // NEW: STREAMING ENCRYPTION (CHUNK BY CHUNK)
-                // ==========================================
                 try (FileInputStream fis = new FileInputStream(targetFile);
                      FileOutputStream fos = new FileOutputStream(outFileName)) {
                     
-                    fos.write(iv); // Write the IV to the very beginning of the new file
+                    fos.write(iv); 
                     
                     try (CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
-                        byte[] buffer = new byte[64 * 1024]; // 64KB Bucket
+                        byte[] buffer = new byte[64 * 1024]; 
                         int bytesRead;
                         
-                        // Loop: Read a bucketful, encrypt it, write it, repeat until empty (-1)
                         while ((bytesRead = fis.read(buffer)) != -1) {
                             cos.write(buffer, 0, bytesRead);
                         }
@@ -106,24 +101,36 @@ public class SecureFile {
                 
             } else if (mode.equals("decrypt")) {
                 
-                // ==========================================
-                // OLD: RAM METHOD (We will update this next)
-                // ==========================================
-                byte[] fileData = Files.readAllBytes(Paths.get(fileName));
-                
-                byte[] iv = new byte[16];
-                System.arraycopy(fileData, 0, iv, 0, 16);
-                IvParameterSpec ivSpec = new IvParameterSpec(iv);
-                
-                byte[] actualEncryptedData = new byte[fileData.length - 16];
-                System.arraycopy(fileData, 16, actualEncryptedData, 0, actualEncryptedData.length);
-                
-                cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec);
-                byte[] decryptedData = cipher.doFinal(actualEncryptedData);
-                
                 String outFileName = fileName.replace(".enc", ".dec");
-                Files.write(Paths.get(outFileName), decryptedData);
-                System.out.println("[-] SUCCESS: " + fileName + " decrypted successfully.");
+                
+                
+                //STREAMING DECRYPTION (CHUNK BY CHUNK)
+                
+                try (FileInputStream fis = new FileInputStream(targetFile)) {
+                    
+                    // Read the first 16 bytes to extract the IV
+                    byte[] iv = new byte[16];
+                    fis.read(iv); 
+                    IvParameterSpec ivSpec = new IvParameterSpec(iv);
+                    
+                    //  engine on in DECRYPT mode
+                    cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec);
+                    
+                    // Stream  remaining bytes through the CipherInputStream
+                    try (CipherInputStream cis = new CipherInputStream(fis, cipher);
+                         FileOutputStream fos = new FileOutputStream(outFileName)) {
+                        
+                        byte[] buffer = new byte[64 * 1024]; // 64KB Bucket
+                        int bytesRead;
+                        
+                        //   Read decrypted bytes, write them to disk, repeat
+                        while ((bytesRead = cis.read(buffer)) != -1) {
+                            fos.write(buffer, 0, bytesRead);
+                        }
+                    }
+                }
+                
+                System.out.println("[-] SUCCESS: " + fileName + " decrypted using 64KB chunks.");
                 
             } else {
                 System.out.println("Error: Unknown command.");
