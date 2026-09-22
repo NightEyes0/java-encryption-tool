@@ -1,4 +1,5 @@
 import java.io.File;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.io.Console;
@@ -8,6 +9,11 @@ import java.security.SecureRandom;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import javax.crypto.spec.IvParameterSpec;
+// NEW IMPORTS FOR CHUNKING
+import java.io.FileInputStream;  
+import java.io.FileOutputStream; 
+import javax.crypto.CipherOutputStream; 
+import javax.crypto.CipherInputStream;  
 
 public class SecureFile {
     
@@ -28,7 +34,7 @@ public class SecureFile {
 
         Console console = System.console();
         String password;
-        Scanner scanner = new Scanner(System.in); //  both fallback and our new prompt
+        Scanner scanner = new Scanner(System.in); 
         
         if (console != null) {
             password = new String(console.readPassword("[?] Enter secure password (keystrokes hidden): "));
@@ -38,8 +44,6 @@ public class SecureFile {
         }
 
         try {
-            byte[] fileData = Files.readAllBytes(Paths.get(fileName));
-            
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashedKey = digest.digest(password.getBytes("UTF-8"));
             SecretKeySpec secretKey = new SecretKeySpec(hashedKey, "AES");
@@ -53,31 +57,59 @@ public class SecureFile {
                 IvParameterSpec ivSpec = new IvParameterSpec(iv);
 
                 cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec);
-                byte[] encryptedData = cipher.doFinal(fileData);
-                
-                byte[] combined = new byte[iv.length + encryptedData.length];
-                System.arraycopy(iv, 0, combined, 0, iv.length);
-                System.arraycopy(encryptedData, 0, combined, iv.length, encryptedData.length);
-                
                 String outFileName = fileName + ".enc";
-                Files.write(Paths.get(outFileName), combined);
-                System.out.println("[+] SUCCESS: " + fileName + " secured with AES-256/CBC.");
                 
-                //  INTERACTIVE CLEANUP
-                System.out.print("[?] Do you want to permanently delete the original unprotected file? (y/n): ");
+                // ==========================================
+                // NEW: STREAMING ENCRYPTION (CHUNK BY CHUNK)
+                // ==========================================
+                try (FileInputStream fis = new FileInputStream(targetFile);
+                     FileOutputStream fos = new FileOutputStream(outFileName)) {
+                    
+                    fos.write(iv); // Write the IV to the very beginning of the new file
+                    
+                    try (CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
+                        byte[] buffer = new byte[64 * 1024]; // 64KB Bucket
+                        int bytesRead;
+                        
+                        // Loop: Read a bucketful, encrypt it, write it, repeat until empty (-1)
+                        while ((bytesRead = fis.read(buffer)) != -1) {
+                            cos.write(buffer, 0, bytesRead);
+                        }
+                    }
+                }
+                
+                System.out.println("[+] SUCCESS: " + fileName + " secured with AES-256/CBC using 64KB chunks.");
+                
+                System.out.print("[?] Do you want to securely shred the original file? (y/n): ");
                 String deleteChoice = scanner.nextLine().trim().toLowerCase();
                 
                 if (deleteChoice.equals("y") || deleteChoice.equals("yes")) {
-                    if (targetFile.delete()) {
-                        System.out.println("[+] Original file wiped from disk.");
-                    } else {
-                        System.out.println("[!] Warning: Could not delete the original file (might be locked by another program).");
+                    try {
+                        RandomAccessFile raf = new RandomAccessFile(targetFile, "rw");
+                        byte[] garbage = new byte[(int) raf.length()];
+                        new SecureRandom().nextBytes(garbage); 
+                        raf.seek(0); 
+                        raf.write(garbage); 
+                        raf.close();
+                        
+                        if (targetFile.delete()) { 
+                            System.out.println("[+] Original file SECURELY SHREDDED (unrecoverable) and wiped from disk.");
+                        } else {
+                            System.out.println("[!] Warning: Could not delete the file after shredding.");
+                        }
+                    } catch (Exception ex) {
+                        System.out.println("[!] Warning: Secure shred failed - " + ex.getMessage());
                     }
                 } else {
                     System.out.println("[-] Original file preserved.");
                 }
                 
             } else if (mode.equals("decrypt")) {
+                
+                // ==========================================
+                // OLD: RAM METHOD (We will update this next)
+                // ==========================================
+                byte[] fileData = Files.readAllBytes(Paths.get(fileName));
                 
                 byte[] iv = new byte[16];
                 System.arraycopy(fileData, 0, iv, 0, 16);
